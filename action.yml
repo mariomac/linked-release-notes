@@ -1,0 +1,39 @@
+name: 'Linked Release Notes'
+description: 'Generate release notes including changes from submodules'
+author: 'Mario Macias'
+branding:
+  icon: 'book-open'
+  color: 'blue'
+
+inputs:
+  github-token:
+    description: 'GitHub token for API access'
+    required: true
+    default: ${{ github.token }}
+  repository:
+    description: 'Repository in owner/repo format (defaults to current repository)'
+    required: false
+    default: ${{ github.repository }}
+  tag:
+    description: 'Tag to generate release notes for (defaults to current tag/ref)'
+    required: false
+    default: ${{ github.ref_name }}
+  previous-tag:
+    description: 'Previous tag to compare against (auto-detected if not provided)'
+    required: false
+  submodule-path:
+    description: 'Path to submodule to check for updates (optional)'
+    required: false
+  submodule-repository:
+    description: 'Repository path for the submodule in owner/repo format (required if submodule-path is set)'
+    required: false
+
+outputs:
+  release-notes:
+    description: 'Generated release notes including submodule changes'
+  has-submodule-changes:
+    description: 'Whether the submodule version has changed'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'

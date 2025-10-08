@@ -7,6 +7,7 @@
 *.dll
 *.so
 *.dylib
+linked-release-notes
 
 # Test binary, built with `go test -c`
 *.test

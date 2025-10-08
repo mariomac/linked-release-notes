@@ -1,0 +1,49 @@
+name: Example Release Notes Generation
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to generate release notes for'
+        required: true
+        type: string
+      previous-tag:
+        description: 'Previous tag (optional)'
+        required: false
+        type: string
+      submodule-path:
+        description: 'Submodule path (optional)'
+        required: false
+        type: string
+      submodule-repository:
+        description: 'Submodule repository (optional)'
+        required: false
+        type: string
+
+jobs:
+  generate-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Generate Release Notes
+        id: release-notes
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ inputs.tag }}
+          previous-tag: ${{ inputs.previous-tag }}
+          submodule-path: ${{ inputs.submodule-path }}
+          submodule-repository: ${{ inputs.submodule-repository }}
+
+      - name: Display Release Notes
+        run: |
+          echo "Release notes generated!"
+          echo "Has submodule changes: ${{ steps.release-notes.outputs.has-submodule-changes }}"
+          echo ""
+          echo "Release Notes:"
+          echo "${{ steps.release-notes.outputs.release-notes }}"
