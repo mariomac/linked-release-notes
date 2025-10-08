@@ -30,12 +30,12 @@ func main() {
 
 func loadConfig() Config {
 	return Config{
-		Token:               getEnv("INPUT_GITHUB-TOKEN", ""),
+		Token:               getEnv("INPUT_GITHUB_TOKEN", ""),
 		Repository:          getEnv("INPUT_REPOSITORY", ""),
 		Tag:                 getEnv("INPUT_TAG", ""),
-		PreviousTag:         getEnv("INPUT_PREVIOUS-TAG", ""),
-		SubmodulePath:       getEnv("INPUT_SUBMODULE-PATH", ""),
-		SubmoduleRepository: getEnv("INPUT_SUBMODULE-REPOSITORY", ""),
+		PreviousTag:         getEnv("INPUT_PREVIOUS_TAG", ""),
+		SubmodulePath:       getEnv("INPUT_SUBMODULE_PATH", ""),
+		SubmoduleRepository: getEnv("INPUT_SUBMODULE_REPOSITORY", ""),
 	}
 }
 
@@ -110,8 +110,8 @@ func run(config Config) error {
 	finalNotes := releaseNotes + submoduleNotes
 
 	// Set outputs
-	setOutput("release-notes", finalNotes)
-	setOutput("has-submodule-changes", fmt.Sprintf("%t", hasSubmoduleChanges))
+	setOutput("release_notes", finalNotes)
+	setOutput("has_submodule_changes", fmt.Sprintf("%t", hasSubmoduleChanges))
 
 	fmt.Println("Release notes generated successfully")
 	return nil
@@ -234,7 +234,7 @@ func setOutput(name, value string) {
 		if err == nil {
 			defer f.Close()
 			// Use multiline format for release notes
-			if name == "release-notes" {
+			if name == "release_notes" {
 				fmt.Fprintf(f, "%s<<EOF\n%s\nEOF\n", name, value)
 			} else {
 				fmt.Fprintf(f, "%s=%s\n", name, value)

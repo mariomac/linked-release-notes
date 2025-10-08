@@ -6,7 +6,7 @@ branding:
   color: 'blue'
 
 inputs:
-  github-token:
+  github_token:
     description: 'GitHub token for API access'
     required: true
     default: ${{ github.token }}
@@ -18,20 +18,20 @@ inputs:
     description: 'Tag to generate release notes for (defaults to current tag/ref)'
     required: false
     default: ${{ github.ref_name }}
-  previous-tag:
+  previous_tag:
     description: 'Previous tag to compare against (auto-detected if not provided)'
     required: false
-  submodule-path:
+  submodule_path:
     description: 'Path to submodule to check for updates (optional)'
     required: false
-  submodule-repository:
-    description: 'Repository path for the submodule in owner/repo format (required if submodule-path is set)'
+  submodule_repository:
+    description: 'Repository path for the submodule in owner/repo format (required if submodule_path is set)'
     required: false
 
 outputs:
-  release-notes:
+  release_notes:
     description: 'Generated release notes including submodule changes'
-  has-submodule-changes:
+  has_submodule_changes:
     description: 'Whether the submodule version has changed'
 
 runs:
