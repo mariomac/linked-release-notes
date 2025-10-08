@@ -14,13 +14,17 @@ A GitHub Action that generates standard release notes for a given project, and a
 ### Basic Usage
 
 ```yaml
-name: Release
+name: Generate Release Notes
 on:
   release:
-    types: [created]
+    types:
+      - published
+
+permissions: write-all
 
 jobs:
   release-notes:
+    permissions: write-all
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,92 +35,40 @@ jobs:
 
       - name: Generate Release Notes
         id: release-notes
-        uses: mariomac/linked-release-notes@v1
+        uses: mariomac/linked-release-notes@v0.0.5
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Display Release Notes
-        run: echo "${{ steps.release-notes.outputs.release-notes }}"
-```
-
-### With Submodule Tracking
-
-```yaml
-name: Release
-on:
-  release:
-    types: [created]
-
-jobs:
-  release-notes:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Generate Release Notes
-        id: release-notes
-        uses: mariomac/linked-release-notes@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          submodule-path: 'path/to/submodule'
-          submodule-repository: 'owner/submodule-repo'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.event.release.tag_name }}
 
       - name: Update Release with Notes
-        if: steps.release-notes.outputs.has-submodule-changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ github.event.release.id }}
+          RELEASE_NOTES: ${{ steps.release-notes.outputs.release_notes }}
         run: |
-          echo "Submodule has changes!"
-          echo "${{ steps.release-notes.outputs.release-notes }}"
+          curl -L \
+            -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID \
+            -d "{\"body\":$(jq -Rs . <<< "$RELEASE_NOTES")}"
 ```
 
 ## Inputs
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `github-token` | GitHub token for API access | Yes | `${{ github.token }}` |
-| `repository` | Repository in owner/repo format | No | `${{ github.repository }}` |
-| `tag` | Tag to generate release notes for | No | `${{ github.ref_name }}` |
-| `previous-tag` | Previous tag to compare against | No | Auto-detected |
-| `submodule-path` | Path to submodule to check for updates | No | - |
-| `submodule-repository` | Repository path for the submodule (owner/repo) | No | - |
+| Input                  | Description | Required | Default |
+|------------------------|-------------|----------|---------|
+| `github_token`         | GitHub token for API access | Yes | `${{ github.token }}` |
+| `repository`           | Repository in owner/repo format | No | `${{ github.repository }}` |
+| `tag`                  | Tag to generate release notes for | No | `${{ github.ref_name }}` |
+| `previous_tag`         | Previous tag to compare against | No | Auto-detected |
 
 ## Outputs
 
-| Output | Description |
-|--------|-------------|
-| `release-notes` | Generated release notes including submodule changes |
-| `has-submodule-changes` | Whether the submodule version has changed (`true` or `false`) |
-
-## How It Works
-
-1. The action generates release notes for the main repository using GitHub's release notes API
-2. If a submodule path is specified, it checks if the submodule commit has changed between tags
-3. If the submodule has changed, it tries to find corresponding tags in the submodule repository
-4. It generates release notes for the submodule and appends them to the main release notes
-5. The combined release notes are provided as an output
-
-## Example Output
-
-```markdown
-## What's Changed
-* Feature: Add new authentication method by @user1 in #123
-* Fix: Resolve memory leak in worker by @user2 in #124
-
-**Full Changelog**: https://github.com/owner/repo/compare/v1.0.0...v1.1.0
-
-## Submodule Changes: owner/submodule-repo
-
-Updated from v2.0.0 to v2.1.0
-
-## What's Changed
-* Enhancement: Improve performance by @user3 in #45
-* Fix: Handle edge case in parser by @user4 in #46
-
-**Full Changelog**: https://github.com/owner/submodule-repo/compare/v2.0.0...v2.1.0
-```
+| Output                  | Description |
+|-------------------------|-------------|
+| `release_notes`         | Generated release notes including submodule changes |
 
 ## License
 
