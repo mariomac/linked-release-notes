@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/go-github/v57/github"
+	"golang.org/x/mod/semver"
 	"golang.org/x/oauth2"
 )
 
@@ -46,6 +47,59 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+type ReleaseNotesWriter struct {
+	config      Config
+	client      *github.Client
+	owner       string
+	repo        string
+	previousTag string
+}
+
+func (w *ReleaseNotesWriter) fetchPreviousTag(ctx context.Context) error {
+	if w.config.PreviousTag != "" {
+		w.previousTag = w.config.PreviousTag
+		return nil
+	}
+	var tags []string
+	for page := 1; ; page++ {
+		releases, resp, err := w.client.Repositories.ListReleases(ctx, w.owner, w.repo, &github.ListOptions{Page: page, PerPage: 100})
+		if err != nil {
+			return err
+		}
+		for _, release := range releases {
+			if release.TagName != nil && *release.TagName != "" {
+				tn := *release.TagName // strings.TrimPrefix(*release.TagName, "v")
+				// discard prereleases and other data
+				if !strings.Contains(tn, "-") {
+					tags = append(tags, tn)
+				}
+			}
+		}
+		if page >= resp.LastPage {
+			break
+		}
+	}
+	semver.Sort(tags)
+	fmt.Println("tags: ", tags)
+	if len(tags) == 0 {
+		return nil
+	}
+	if w.config.Tag == "" {
+		w.previousTag = tags[len(tags)-1]
+		return nil
+	}
+	i := len(tags) - 1
+	for semver.Compare(w.config.Tag, tags[i]) <= 0 {
+		i--
+		if i < 0 {
+			w.previousTag = tags[len(tags)-1]
+			return nil
+		}
+	}
+	w.previousTag = tags[i]
+	return nil
+}
+
 func run(config Config) error {
 	ctx := context.Background()
 
@@ -61,10 +115,17 @@ func run(config Config) error {
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid repository format: %s (expected owner/repo)", config.Repository)
 	}
-	owner, repo := parts[0], parts[1]
+	rnw := ReleaseNotesWriter{config: config, client: client, owner: parts[0], repo: parts[1]}
+	if err := rnw.fetchPreviousTag(ctx); err != nil {
+		return fmt.Errorf("fetching previous tag: %w", err)
+	}
+	fmt.Println("Previous tag:", rnw.previousTag)
+	return nil
+}
 
+/*
 	// Get release notes for main repository
-	releaseNotes, err := generateReleaseNotes(ctx, client, owner, repo, config.Tag, config.PreviousTag)
+	releaseNotes, err := generateReleaseNotes(ctx, client, rnw.owner, rnw.repo, config.Tag, config.PreviousTag)
 	if err != nil {
 		return fmt.Errorf("failed to generate release notes: %w", err)
 	}
@@ -81,9 +142,10 @@ func run(config Config) error {
 		subOwner, subRepo := subParts[0], subParts[1]
 
 		// Get submodule commit changes
-		oldCommit, newCommit, err := getSubmoduleChanges(ctx, client, owner, repo, config.SubmodulePath, config.PreviousTag, config.Tag)
+		oldCommit, newCommit, err := getSubmoduleChanges(ctx, client, rnw.owner, rnw.repo, config.SubmodulePath, config.PreviousTag, config.Tag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to get submodule changes: %v\n", err)
+
 		} else if oldCommit != newCommit {
 			hasSubmoduleChanges = true
 
@@ -120,6 +182,7 @@ func run(config Config) error {
 func generateReleaseNotes(ctx context.Context, client *github.Client, owner, repo, tag, previousTag string) (string, error) {
 	// If no previous tag is provided, try to find it
 	if previousTag == "" {
+		// instad of tags, use last semver version?
 		tags, _, err := client.Repositories.ListTags(ctx, owner, repo, &github.ListOptions{PerPage: 100})
 		if err != nil {
 			return "", err
@@ -163,6 +226,7 @@ func generateReleaseNotes(ctx context.Context, client *github.Client, owner, rep
 
 func getSubmoduleChanges(ctx context.Context, client *github.Client, owner, repo, submodulePath, oldTag, newTag string) (string, string, error) {
 	// Get the commit SHA for old tag
+	client.Repositories.ListReleases(ctx, owner)
 	oldRef, _, err := client.Git.GetRef(ctx, owner, repo, "tags/"+oldTag)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get old tag: %w", err)
@@ -242,3 +306,4 @@ func setOutput(name, value string) {
 		}
 	}
 }
+*/
