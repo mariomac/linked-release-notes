@@ -11,11 +11,11 @@ import (
 )
 
 type Config struct {
-	Token              string
-	Repository         string
-	Tag                string
-	PreviousTag        string
-	SubmodulePath      string
+	Token               string
+	Repository          string
+	Tag                 string
+	PreviousTag         string
+	SubmodulePath       string
 	SubmoduleRepository string
 }
 
@@ -30,11 +30,11 @@ func main() {
 
 func loadConfig() Config {
 	return Config{
-		Token:              getEnv("INPUT_GITHUB-TOKEN", ""),
-		Repository:         getEnv("INPUT_REPOSITORY", ""),
-		Tag:                getEnv("INPUT_TAG", ""),
-		PreviousTag:        getEnv("INPUT_PREVIOUS-TAG", ""),
-		SubmodulePath:      getEnv("INPUT_SUBMODULE-PATH", ""),
+		Token:               getEnv("INPUT_GITHUB-TOKEN", ""),
+		Repository:          getEnv("INPUT_REPOSITORY", ""),
+		Tag:                 getEnv("INPUT_TAG", ""),
+		PreviousTag:         getEnv("INPUT_PREVIOUS-TAG", ""),
+		SubmodulePath:       getEnv("INPUT_SUBMODULE-PATH", ""),
 		SubmoduleRepository: getEnv("INPUT_SUBMODULE-REPOSITORY", ""),
 	}
 }
