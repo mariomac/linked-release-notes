@@ -31,8 +31,6 @@ inputs:
 outputs:
   release_notes:
     description: 'Generated release notes including submodule changes'
-  has_submodule_changes:
-    description: 'Whether the submodule version has changed'
 
 runs:
   using: 'docker'

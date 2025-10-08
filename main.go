@@ -12,12 +12,10 @@ import (
 )
 
 type Config struct {
-	Token               string
-	Repository          string
-	Tag                 string
-	PreviousTag         string
-	SubmodulePath       string
-	SubmoduleRepository string
+	Token       string
+	Repository  string
+	Tag         string
+	PreviousTag string
 }
 
 func main() {
@@ -31,12 +29,10 @@ func main() {
 
 func loadConfig() Config {
 	return Config{
-		Token:               getEnv("INPUT_GITHUB_TOKEN", ""),
-		Repository:          getEnv("INPUT_REPOSITORY", ""),
-		Tag:                 getEnv("INPUT_TAG", ""),
-		PreviousTag:         getEnv("INPUT_PREVIOUS_TAG", ""),
-		SubmodulePath:       getEnv("INPUT_SUBMODULE_PATH", ""),
-		SubmoduleRepository: getEnv("INPUT_SUBMODULE_REPOSITORY", ""),
+		Token:       getEnv("INPUT_GITHUB_TOKEN", ""),
+		Repository:  getEnv("INPUT_REPOSITORY", ""),
+		Tag:         getEnv("INPUT_TAG", ""),
+		PreviousTag: getEnv("INPUT_PREVIOUS_TAG", ""),
 	}
 }
 
@@ -50,19 +46,17 @@ func getEnv(key, defaultValue string) string {
 type ReleaseNotesWriter struct {
 	config      Config
 	client      *github.Client
-	owner       string
-	repo        string
 	previousTag string
 }
 
-func (w *ReleaseNotesWriter) fetchPreviousTag(ctx context.Context) error {
+func (w *ReleaseNotesWriter) fetchPreviousTag(ctx context.Context, owner, repo string) error {
 	if w.config.PreviousTag != "" {
 		w.previousTag = w.config.PreviousTag
 		return nil
 	}
 	var tags []string
 	for page := 1; ; page++ {
-		releases, resp, err := w.client.Repositories.ListReleases(ctx, w.owner, w.repo, &github.ListOptions{Page: page, PerPage: 100})
+		releases, resp, err := w.client.Repositories.ListReleases(ctx, owner, repo, &github.ListOptions{Page: page, PerPage: 100})
 		if err != nil {
 			return err
 		}
@@ -115,107 +109,97 @@ func run(config Config) error {
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid repository format: %s (expected owner/repo)", config.Repository)
 	}
-	rnw := ReleaseNotesWriter{config: config, client: client, owner: parts[0], repo: parts[1]}
-	if err := rnw.fetchPreviousTag(ctx); err != nil {
+	owner, repo := parts[0], parts[1]
+	rnw := ReleaseNotesWriter{config: config, client: client}
+	if err := rnw.fetchPreviousTag(ctx, owner, repo); err != nil {
 		return fmt.Errorf("fetching previous tag: %w", err)
 	}
 	fmt.Println("Previous tag:", rnw.previousTag)
-	return nil
-}
 
-/*
 	// Get release notes for main repository
-	releaseNotes, err := generateReleaseNotes(ctx, client, rnw.owner, rnw.repo, config.Tag, config.PreviousTag)
+	commit, err := rnw.commitForTag(ctx, owner, repo, rnw.config.Tag)
 	if err != nil {
-		return fmt.Errorf("failed to generate release notes: %w", err)
+		// TODO: if tag does not exist, default to branch's latest commit
+		return fmt.Errorf("failed to get commit for tag: %w", err)
 	}
+	fmt.Println("Commit:", commit)
+	prevCommit, err := rnw.commitForTag(ctx, owner, repo, rnw.previousTag)
+	if err != nil {
+		return fmt.Errorf("failed to get commit for previous tag: %w", err)
+	}
+	fmt.Println("Previous commit:", prevCommit)
+	changes, err := rnw.getChanges(ctx, owner, repo, commit, prevCommit)
+	if err != nil {
+		return fmt.Errorf("failed to get changes: %w", err)
+	}
+	submodulePath, submoduleRepository, err := rnw.getSubmodulePathRepo(ctx, owner, repo, commit)
+	if err != nil {
+		return fmt.Errorf("failed to get submodule path and repository: %w", err)
+	}
+	fmt.Printf("Submodule path: %s\n", submodulePath)
+	fmt.Printf("Submodule repository: %s\n", submoduleRepository)
 
-	// Check for submodule changes
-	hasSubmoduleChanges := false
-	submoduleNotes := ""
-
-	if config.SubmodulePath != "" && config.SubmoduleRepository != "" {
-		subParts := strings.Split(config.SubmoduleRepository, "/")
-		if len(subParts) != 2 {
-			return fmt.Errorf("invalid submodule repository format: %s", config.SubmoduleRepository)
-		}
-		subOwner, subRepo := subParts[0], subParts[1]
-
-		// Get submodule commit changes
-		oldCommit, newCommit, err := getSubmoduleChanges(ctx, client, rnw.owner, rnw.repo, config.SubmodulePath, config.PreviousTag, config.Tag)
+	var smChanges []string
+	if submodulePath == "" || submoduleRepository == "" {
+		fmt.Printf("No submodule repository specified: %q %q\n", submodulePath, submoduleRepository)
+	} else {
+		oldSMCommit, newSMCommit, err := rnw.getSubmoduleCommits(ctx, owner, repo, prevCommit, commit, submodulePath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to get submodule changes: %v\n", err)
-
-		} else if oldCommit != newCommit {
-			hasSubmoduleChanges = true
-
-			// Try to find tags for these commits
-			oldTag, _ := findTagForCommit(ctx, client, subOwner, subRepo, oldCommit)
-			newTag, _ := findTagForCommit(ctx, client, subOwner, subRepo, newCommit)
-
-			if oldTag != "" && newTag != "" {
-				notes, err := generateReleaseNotes(ctx, client, subOwner, subRepo, newTag, oldTag)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to generate submodule release notes: %v\n", err)
-				} else {
-					submoduleNotes = fmt.Sprintf("\n\n## Submodule Changes: %s\n\nUpdated from %s to %s\n\n%s",
-						config.SubmoduleRepository, oldTag, newTag, notes)
-				}
-			} else {
-				submoduleNotes = fmt.Sprintf("\n\n## Submodule Changes: %s\n\nUpdated from %s to %s",
-					config.SubmoduleRepository, oldCommit[:8], newCommit[:8])
-			}
+			return fmt.Errorf("failed to get submodule commits: %w", err)
+		}
+		fmt.Printf("Old submodule commit: %s\n", oldSMCommit[:8])
+		fmt.Printf("New submodule commit: %s\n", newSMCommit[:8])
+		parts := strings.Split(submoduleRepository, "/")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid submodule repository format: %s (expected owner/repo)", submoduleRepository)
+		}
+		owner, repo := parts[0], parts[1]
+		smChanges, err = rnw.getChanges(ctx, owner, repo, newSMCommit, oldSMCommit)
+		if err != nil {
+			return fmt.Errorf("failed to get submodule changes: %w", err)
 		}
 	}
 
 	// Combine release notes
-	finalNotes := releaseNotes + submoduleNotes
+	finalNotes := fmt.Sprintf("## Changes from %s/%s:\n%s\n", owner, repo, strings.Join(changes, "\n"))
+	finalNotes += fmt.Sprintf("\n## Changes from %s:\n%s\n", submoduleRepository, strings.Join(smChanges, "\n"))
 
 	// Set outputs
 	setOutput("release_notes", finalNotes)
-	setOutput("has_submodule_changes", fmt.Sprintf("%t", hasSubmoduleChanges))
 
-	fmt.Println("Release notes generated successfully")
+	fmt.Println("\n\nRelease notes generated successfully:\n", finalNotes)
 	return nil
 }
 
-func generateReleaseNotes(ctx context.Context, client *github.Client, owner, repo, tag, previousTag string) (string, error) {
-	// If no previous tag is provided, try to find it
-	if previousTag == "" {
-		// instad of tags, use last semver version?
-		tags, _, err := client.Repositories.ListTags(ctx, owner, repo, &github.ListOptions{PerPage: 100})
-		if err != nil {
-			return "", err
-		}
+func (w *ReleaseNotesWriter) commitForTag(ctx context.Context, owner, repo, tag string) (string, error) {
+	ref, _, err := w.client.Git.GetRef(ctx, owner, repo, "tags/"+tag)
+	if err != nil {
+		return "", fmt.Errorf("failed to get tag reference: %w", err)
+	}
+	return ref.Object.GetSHA(), nil
+}
 
-		// Find current tag index
-		currentIndex := -1
-		for i, t := range tags {
-			if t.GetName() == tag {
-				currentIndex = i
-				break
-			}
-		}
-
-		// Get previous tag
-		if currentIndex > 0 && currentIndex < len(tags) {
-			previousTag = tags[currentIndex+1].GetName()
-		}
+func (w *ReleaseNotesWriter) getChanges(ctx context.Context, owner, repo, commit, prevCommit string) ([]string, error) {
+	comparison, _, err := w.client.Repositories.CompareCommits(ctx, owner, repo, prevCommit, commit, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compare commits: %w", err)
 	}
 
-	if previousTag == "" {
-		// No previous tag, just get commits for this tag
-		tagObj, _, err := client.Repositories.GetReleaseByTag(ctx, owner, repo, tag)
-		if err == nil && tagObj.GetBody() != "" {
-			return tagObj.GetBody(), nil
+	var changes []string
+	for _, commit := range comparison.Commits {
+		if commit.Commit != nil && commit.Commit.Message != nil {
+			message := strings.Split(*commit.Commit.Message, "\n")[0]
+			changes = append(changes, "* "+message)
 		}
-		return fmt.Sprintf("Release %s", tag), nil
 	}
+	return changes, nil
+}
 
+func (w *ReleaseNotesWriter) generateReleaseNotes(ctx context.Context, owner, repo string) (string, error) {
 	// Generate release notes using GitHub API
-	notes, _, err := client.Repositories.GenerateReleaseNotes(ctx, owner, repo, &github.GenerateNotesOptions{
-		TagName:         tag,
-		PreviousTagName: &previousTag,
+	notes, _, err := w.client.Repositories.GenerateReleaseNotes(ctx, owner, repo, &github.GenerateNotesOptions{
+		TagName:         w.config.Tag,
+		PreviousTagName: &w.config.PreviousTag,
 	})
 	if err != nil {
 		return "", err
@@ -224,24 +208,9 @@ func generateReleaseNotes(ctx context.Context, client *github.Client, owner, rep
 	return notes.Body, nil
 }
 
-func getSubmoduleChanges(ctx context.Context, client *github.Client, owner, repo, submodulePath, oldTag, newTag string) (string, string, error) {
-	// Get the commit SHA for old tag
-	client.Repositories.ListReleases(ctx, owner)
-	oldRef, _, err := client.Git.GetRef(ctx, owner, repo, "tags/"+oldTag)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get old tag: %w", err)
-	}
-	oldCommit := oldRef.Object.GetSHA()
-
-	// Get the commit SHA for new tag
-	newRef, _, err := client.Git.GetRef(ctx, owner, repo, "tags/"+newTag)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get new tag: %w", err)
-	}
-	newCommit := newRef.Object.GetSHA()
-
+func (w *ReleaseNotesWriter) getSubmoduleCommits(ctx context.Context, owner, repo, oldCommit, newCommit, submodulePath string) (old, new string, err error) {
 	// Get submodule commit at old tag
-	oldTree, _, err := client.Git.GetTree(ctx, owner, repo, oldCommit, true)
+	oldTree, _, err := w.client.Git.GetTree(ctx, owner, repo, oldCommit, true)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get old tree: %w", err)
 	}
@@ -255,7 +224,7 @@ func getSubmoduleChanges(ctx context.Context, client *github.Client, owner, repo
 	}
 
 	// Get submodule commit at new tag
-	newTree, _, err := client.Git.GetTree(ctx, owner, repo, newCommit, true)
+	newTree, _, err := w.client.Git.GetTree(ctx, owner, repo, newCommit, true)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get new tree: %w", err)
 	}
@@ -275,19 +244,48 @@ func getSubmoduleChanges(ctx context.Context, client *github.Client, owner, repo
 	return oldSubmoduleCommit, newSubmoduleCommit, nil
 }
 
-func findTagForCommit(ctx context.Context, client *github.Client, owner, repo, commitSHA string) (string, error) {
-	tags, _, err := client.Repositories.ListTags(ctx, owner, repo, &github.ListOptions{PerPage: 100})
+func (w *ReleaseNotesWriter) getSubmodulePathRepo(ctx context.Context, owner, repo, commit string) (string, string, error) {
+	// Get release notes for submodule repository
+	// Read .gitmodules file
+	// Get the .gitmodules file content from the repository at a specific commit
+	gitmodulesContent, _, _, err := w.client.Repositories.GetContents(ctx, owner, repo, ".gitmodules", &github.RepositoryContentGetOptions{
+		Ref: commit, // or tag, branch name
+	})
 	if err != nil {
-		return "", err
+		return "", "", fmt.Errorf("failed to read .gitmodules from repository: %w", err)
 	}
 
-	for _, tag := range tags {
-		if tag.GetCommit().GetSHA() == commitSHA {
-			return tag.GetName(), nil
+	// Decode the content (GitHub API returns base64-encoded content)
+	content, err := gitmodulesContent.GetContent()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to decode .gitmodules content: %w", err)
+	}
+
+	var submodulePath, submoduleRepo string
+
+	// Parse the .gitmodules file
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Extract path
+		if strings.HasPrefix(line, "path = ") {
+			submodulePath = strings.TrimPrefix(line, "path = ")
+		}
+
+		// Extract URL and convert to owner/repo format
+		if strings.HasPrefix(line, "url = ") {
+			url := strings.TrimPrefix(line, "url = ")
+			// Remove .git suffix if present
+			url = strings.TrimSuffix(url, ".git")
+			// Extract owner/repo from URL (e.g., https://github.com/grafana/opentelemetry-ebpf-instrumentation.git)
+			parts := strings.Split(url, "/")
+			if len(parts) >= 2 {
+				submoduleRepo = parts[len(parts)-2] + "/" + parts[len(parts)-1]
+			}
 		}
 	}
-
-	return "", fmt.Errorf("tag not found for commit")
+	return submodulePath, submoduleRepo, nil
 }
 
 func setOutput(name, value string) {
@@ -306,4 +304,3 @@ func setOutput(name, value string) {
 		}
 	}
 }
-*/
