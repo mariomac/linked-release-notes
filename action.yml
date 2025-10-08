@@ -21,12 +21,6 @@ inputs:
   previous_tag:
     description: 'Previous tag to compare against (auto-detected if not provided)'
     required: false
-  submodule_path:
-    description: 'Path to submodule to check for updates (optional)'
-    required: false
-  submodule_repository:
-    description: 'Repository path for the submodule in owner/repo format (required if submodule_path is set)'
-    required: false
 
 outputs:
   release_notes:

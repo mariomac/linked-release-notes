@@ -275,13 +275,20 @@ func (w *ReleaseNotesWriter) getSubmodulePathRepo(ctx context.Context, owner, re
 
 		// Extract URL and convert to owner/repo format
 		if strings.HasPrefix(line, "url = ") {
-			url := strings.TrimPrefix(line, "url = ")
+			url := strings.TrimSpace(strings.TrimPrefix(line, "url = "))
 			// Remove .git suffix if present
 			url = strings.TrimSuffix(url, ".git")
-			// Extract owner/repo from URL (e.g., https://github.com/grafana/opentelemetry-ebpf-instrumentation.git)
-			parts := strings.Split(url, "/")
-			if len(parts) >= 2 {
-				submoduleRepo = parts[len(parts)-2] + "/" + parts[len(parts)-1]
+			if strings.HasPrefix(url, "http") {
+				// Extract owner/repo from URL (e.g., https://github.com/grafana/opentelemetry-ebpf-instrumentation.git)
+				parts := strings.Split(url, "/")
+				if len(parts) >= 2 {
+					submoduleRepo = parts[len(parts)-2] + "/" + parts[len(parts)-1]
+				}
+			} else if strings.HasPrefix(url, "git@") {
+				parts := strings.Split(url, ":")
+				if len(parts) >= 2 {
+					submoduleRepo = parts[1]
+				}
 			}
 		}
 	}
