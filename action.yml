@@ -21,6 +21,9 @@ inputs:
   previous_tag:
     description: 'Previous tag to compare against (auto-detected if not provided)'
     required: false
+  generated_submodule_link:
+    description: 'prepends this string to the #PR links of the subodule notes. If unset, it will use the submodule owner/repo'
+    required: false
 
 outputs:
   release_notes:

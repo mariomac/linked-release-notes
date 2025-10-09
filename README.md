@@ -20,11 +20,10 @@ on:
     types:
       - published
 
-permissions: write-all
-
 jobs:
   release-notes:
-    permissions: write-all
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,7 +34,7 @@ jobs:
 
       - name: Generate Release Notes
         id: release-notes
-        uses: mariomac/linked-release-notes@v0.0.5
+        uses: mariomac/linked-release-notes@v0.0.7
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event.release.tag_name }}
@@ -46,7 +45,7 @@ jobs:
           RELEASE_ID: ${{ github.event.release.id }}
           RELEASE_NOTES: ${{ steps.release-notes.outputs.release_notes }}
         run: |
-          curl -L \
+          curl -L -f \
             -X PATCH \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
@@ -63,7 +62,7 @@ jobs:
 | `repository`           | Repository in owner/repo format | No | `${{ github.repository }}` |
 | `tag`                  | Tag to generate release notes for | No | `${{ github.ref_name }}` |
 | `previous_tag`         | Previous tag to compare against | No | Auto-detected |
-INPUT_GENERATED_SUBMODULE_LINK
+| `generated_submodule_link` | Prepends this string to the #PR links of the subodule notes | No | Submodule owner/repo |
 
 ## Outputs
 
