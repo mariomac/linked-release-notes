@@ -63,6 +63,7 @@ jobs:
 | `repository`           | Repository in owner/repo format | No | `${{ github.repository }}` |
 | `tag`                  | Tag to generate release notes for | No | `${{ github.ref_name }}` |
 | `previous_tag`         | Previous tag to compare against | No | Auto-detected |
+INPUT_GENERATED_SUBMODULE_LINK
 
 ## Outputs
 
